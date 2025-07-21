@@ -1,7 +1,10 @@
 import document_loader
 from pathlib import Path
+import time
 
-load_dir = Path.home() / "mnt/imidat/IMI-NLPCHIR/PDF/ARC_HUMBEF"
+from mu_document_utils import DocumentWrapper
+
+load_dir = Path.home() / "mnt/imidat/IMI-NLPCHIR/PDF/ARC_BEFRAD"
 
 save_dir_name = "test_out"
 
@@ -18,7 +21,13 @@ def extract():
             continue
         # start extraction
         with document_loader.parse_document(pdf_path) as document:
-            print(document.name)
+            doc = DocumentWrapper.from_document(document)
+            start_time = time.time()
+            has_table = doc.has_table
+            print("--- %s seconds ---" % (time.time() - start_time))
+            if has_table:
+                print(f"Document with name: {pdf_path.name} has table: true")
+
 
 
 if __name__ == "__main__":
