@@ -4,9 +4,10 @@ from typing import List, Tuple, Dict
 from venv import logger
 
 import fitz
+import pandas as pd
 from traits.trait_types import false
 
-from helper_classes import MyRect
+from helper_classes import MyRect, PyMuDataRowElement, PyMuCollapsedRowElement
 
 MIN_LENGTH_X = 2
 MIN_LENGTH_Y = 2
@@ -24,10 +25,75 @@ class DocumentWrapper:
     horizontal_lines: List[Tuple[int, float, float, float]] = field(default_factory=list)
     rects: List[Tuple["MyRect", int]] = field(default_factory=list)
     rows: List[Tuple["MyRect", int]] = field(default_factory=list)
+    raw_pdf_content_elements: pd.DataFrame = field(default_factory=pd.DataFrame)
+    collapsed_pdf_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @classmethod
     def from_document(cls, document: fitz.Document) -> "DocumentWrapper":
         return cls(document=document)
+
+    def parse_pdf_entries(self):
+        rows = []
+        for page_num, page in enumerate(self.document, start=1):
+            for block in page.get_text('dict')['blocks']:
+                if block['type'] != 0: continue
+                for line in block['lines']:
+                    for span in line['spans']:
+                        x0, y0, x1, y1 = span['bbox']
+                        rows.append(
+                            PyMuDataRowElement(
+                                page=page_num,
+                                x0=x0,
+                                y0=y0,
+                                x1=x1,
+                                y1=y1,
+                                text_content=span['text'],
+                                font=span['font'],
+                                size=span['size'],
+                                flag=span['flags']
+                            )
+                        )
+
+        # prevent padnas from saving dicts
+        buffer = [row.dict() for row in rows]
+        self.raw_pdf_content_elements = pd.DataFrame(buffer)
+
+    def sanitize_parsed_pdf_entries(self):
+        # replace empty text entries with NA so they can be dropped easily
+        self.raw_pdf_content_elements.replace({'text': ' '}, {'text': pd.NA}, inplace=True)
+        self.raw_pdf_content_elements.dropna(inplace=True)
+
+    # Todo: implement alternative approach if there were tables detected in the beginning
+    def collapse_parsed_entries_into_rows(self):
+        grouped = []
+        for (page, y1), group in self.raw_pdf_content_elements.groupby(['page', 'y1'], sort=False):
+            group_sorted = group.sort_values(by='x0')  # order from left to right
+
+            # add additional debug file dump write here
+
+            fonts = group_sorted['font'].tolist()
+            sizes = group_sorted['size'].to_list()
+
+            grouped.append(
+                PyMuCollapsedRowElement(
+                    page=page,
+                    x0=group_sorted['x0'].min(),
+                    y0=group_sorted['y0'].min(),
+                    x1=group_sorted['x1'].max(),
+                    y1=group_sorted['y1'].max(),
+                    text_content=' '.join(group_sorted['text_content']),
+                    fonts=list(group_sorted['font']),
+                    sizes=list(group_sorted['size']),
+                    font_flow_begin=fonts[0] if fonts else None,
+                    font_flow_end=fonts[-1] if fonts else None,
+                    size_flow_begin=sizes[0] if sizes else None,
+                    size_flow_end=sizes[-1] if sizes else None,
+                    flags=group_sorted['flag'],
+                )
+            )
+
+        buffer = [group.dict() for group in grouped]
+        self.collapsed_pdf_rows = pd.DataFrame(buffer)
 
     @property
     def has_table(self) -> bool:

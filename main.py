@@ -4,7 +4,7 @@ import time
 
 from mu_document_utils import DocumentWrapper
 
-load_dir = Path.home() / "mnt/imidat/IMI-NLPCHIR/PDF/ARC_BEFRAD"
+load_dir = Path.home() / "mnt/imidat/IMI-NLPCHIR/PDF/ARC_HUMBEF"
 
 save_dir_name = "test_out"
 
@@ -24,10 +24,14 @@ def extract():
             doc = DocumentWrapper.from_document(document)
             start_time = time.time()
             has_table = doc.has_table
-            print("--- %s seconds ---" % (time.time() - start_time))
-            if has_table:
-                print(f"Document with name: {pdf_path.name} has table: true")
-
+            # get entries from pdf
+            doc.parse_pdf_entries()
+            # sanitize raw content
+            # Todo: check if add
+            #  additional algorithms need to be run before sanitation
+            doc.sanitize_parsed_pdf_entries()
+            doc.collapse_parsed_entries_into_rows()
+            print(time.time() - start_time)
 
 
 if __name__ == "__main__":
