@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 from venv import logger
+from helper_functions import equals_within_boundary
 
 import fitz
 import pandas as pd
@@ -94,6 +95,24 @@ class DocumentWrapper:
 
         buffer = [group.dict() for group in grouped]
         self.collapsed_pdf_rows = pd.DataFrame(buffer)
+
+
+    def detect_connected_blocks_from_rows(self):
+        block_ids = []
+        # helper variables
+        current_block = 0
+        prev_font_begin = None
+        prev_font_end = None
+        prev_size_begin = None
+        prev_size_end = None
+        prev_bottom = None
+
+        for idx, row in self.collapsed_pdf_rows.iterrows():
+            if idx == 0:
+                current_block = 1
+            else:
+                print('filler')
+                # Todo: implement missing logic here 
 
     @property
     def has_table(self) -> bool:
