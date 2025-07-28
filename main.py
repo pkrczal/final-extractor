@@ -31,6 +31,7 @@ def extract():
             #  additional algorithms need to be run before sanitation
             doc.sanitize_parsed_pdf_entries()
             doc.collapse_parsed_entries_into_rows()
+            doc.detect_connected_blocks_from_rows()
             print(time.time() - start_time)
 
 

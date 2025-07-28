@@ -28,6 +28,7 @@ class DocumentWrapper:
     rows: List[Tuple["MyRect", int]] = field(default_factory=list)
     raw_pdf_content_elements: pd.DataFrame = field(default_factory=pd.DataFrame)
     collapsed_pdf_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
+    text_blocks: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @classmethod
     def from_document(cls, document: fitz.Document) -> "DocumentWrapper":
@@ -93,9 +94,14 @@ class DocumentWrapper:
                 )
             )
 
-        buffer = [group.dict() for group in grouped]
-        self.collapsed_pdf_rows = pd.DataFrame(buffer)
-
+        self.collapsed_pdf_rows = pd.DataFrame([
+            {
+                **g.dict(),
+                "height": g.get_height(),
+                "width": g.get_width()
+            }
+            for g in grouped
+        ])
 
     def detect_connected_blocks_from_rows(self):
         block_ids = []
@@ -111,8 +117,39 @@ class DocumentWrapper:
             if idx == 0:
                 current_block = 1
             else:
-                print('filler')
-                # Todo: implement missing logic here 
+                if row['y0'] < prev_bottom:
+                    current_block += 1
+                elif (row['font_flow_begin'] != prev_font_end and not equals_within_boundary(row['y0'], prev_bottom,
+                                                                                             row['height'] + 3)):
+                    current_block += 1
+                elif (row['font_flow_begin'] == prev_font_end and (
+                        abs(row['y0'] - prev_bottom) > row['height'] + 3)):
+                    current_block += 1
+
+            block_ids.append(current_block)
+            prev_font_begin = row['font_flow_begin']
+            prev_font_end = row['font_flow_end']
+            prev_size_begin = row['size_flow_begin']
+            prev_size_end = row['size_flow_end']
+            prev_bottom = row['y0']
+
+        self.collapsed_pdf_rows['block_id'] = block_ids
+        self.text_blocks = self.collapsed_pdf_rows.groupby(['page', 'block_id'], as_index=False).agg({
+            'text_content': lambda texts: '\n'.join(texts),
+            'x0': 'min',
+            'y0': 'max',
+            'x1': 'max',
+            'y1': 'min'
+        })
+        self.text_blocks['box'] = self.text_blocks.apply(
+            lambda _row: MyRect(
+                x0=_row['x0'],
+                y0=_row['y0'],
+                x1=_row['x1'],
+                y1=_row['y1']
+            ), axis=1
+        )
+
 
     @property
     def has_table(self) -> bool:
