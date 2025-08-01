@@ -25,7 +25,7 @@ class DocumentWrapper:
     vertical_lines: List[Tuple[int, float, float, float]] = field(default_factory=list)
     horizontal_lines: List[Tuple[int, float, float, float]] = field(default_factory=list)
     rects: List[Tuple["MyRect", int]] = field(default_factory=list)
-    rows: List[Tuple["MyRect", int]] = field(default_factory=list)
+    table_rows: List[Tuple["MyRect", int]] = field(default_factory=list)
     raw_pdf_content_elements: pd.DataFrame = field(default_factory=pd.DataFrame)
     collapsed_pdf_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
     text_blocks: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -244,9 +244,9 @@ class DocumentWrapper:
             x1 = max(r.x1 for r in group)
             y1 = max(r.y1 for r in group)
 
-            self.rows.append((MyRect(x0=x0, y0=y0, x1=x1, y1=y1), int(page_num)))
+            self.table_rows.append((MyRect(x0=x0, y0=y0, x1=x1, y1=y1), int(page_num)))
 
-        if len(self.rows) > 0:
+        if len(self.table_rows) > 0:
             return True
         else:
             return False
