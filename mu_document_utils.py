@@ -37,6 +37,9 @@ class DocumentWrapper:
     def close_and_save(self, path):
         self.document.save(path)
 
+    def dump_blocks_to_file(self):
+        print('')
+
     def paint_and_write_boxes(self):
         for row in self.text_blocks.iterrows():
             r = row[1]
@@ -51,6 +54,19 @@ class DocumentWrapper:
                 fill=None
             )
             shape.commit()
+        # DEBUG fraw lines
+        # for rect, page in self.table_rows:
+        #     rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y1)
+        #     p = self.document[page - 1]
+        #     shape = p.new_shape()
+        #     shape.draw_rect(rect)
+        #     shape.finish(
+        #         color=(0, 1, 0),
+        #         width=1,
+        #         fill=None
+        #     )
+        #     shape.commit()
+
 
     def parse_pdf_entries(self):
         rows = []
@@ -186,7 +202,7 @@ class DocumentWrapper:
                     if x1 - x0 > 2 or y1 - y0 > 2:
                         my_rect = MyRect(x0=x0, y0=y0, x1=x1, y1=y1)
                         try:
-                            self.rects.append((my_rect, int(page_num)))
+                            self.rects.append((my_rect, int(page.number)))
                         except TypeError as e:
                             logger.error(e)
 
@@ -195,18 +211,18 @@ class DocumentWrapper:
                     if abs(y1 - y0) >= 0:
                         try:
                             # left
-                            self.vertical_lines.append((int(page_num), float(x0), float(y0), float(y1)))
+                            self.vertical_lines.append((int(page.number), float(x0), float(y0), float(y1)))
                             # right
-                            self.vertical_lines.append((int(page_num), float(x1), float(y0), float(y1)))
+                            self.vertical_lines.append((int(page.number), float(x1), float(y0), float(y1)))
                         except TypeError as e:
                             logger.error(e)
 
                     if abs(x1 - x0) >= 0:
                         try:
                             # top
-                            self.horizontal_lines.append((int(page_num), float(y0), float(x0), float(x1)))
+                            self.horizontal_lines.append((int(page.number), float(y0), float(x0), float(x1)))
                             # bottom
-                            self.horizontal_lines.append((int(page_num), float(y1), float(x0), float(x1)))
+                            self.horizontal_lines.append((int(page.number), float(y1), float(x0), float(x1)))
                         except TypeError as e:
                             logger.error(e)
 
@@ -218,16 +234,24 @@ class DocumentWrapper:
         append_prev = False
         row_boxes: List[MyRect] = []
 
-        for curr_row, next_row in zip(self.rects, self.rects[1:]):
-            # assume two boxes are in the same row if their y1 is the same
-            same_row = curr_row[0].y1 == next_row[0].y1
-            if same_row and next_row[0].x0 > curr_row[0].x0 and curr_row[0].get_height() > MIN_HEIGHT_FOR_BOX:
-                row_boxes.append(curr_row[0])
+        for i in range(len(self.rects) - 1):
+
+            current_row = self.rects[i]
+            next_row = self.rects[i + 1]
+
+            if (
+                current_row[0].y1  - current_row[0].y1 ==  next_row[0].y1  - next_row[0].y1
+                and next_row[0].x0 > current_row[0].x0
+                and current_row[0].get_height() > 2
+            ) :
+                row_boxes.append(current_row[0])
                 append_prev = True
-            elif append_prev and same_row and curr_row[0].get_height() > MIN_HEIGHT_FOR_BOX:
-                row_boxes.append(curr_row[0])
-            else:
-                append_prev = False
+            elif (
+                append_prev
+                and current_row[0].y1 -  current_row[0].y1 == next_row[0].y1 - next_row[0].y1
+                and current_row[0].get_height() > 2
+            ):
+                row_boxes.append(current_row[0])
 
         groups: Dict[float, List[MyRect]] = defaultdict(list)
 
@@ -235,7 +259,7 @@ class DocumentWrapper:
             groups[r.y1].append(r)
 
         for y, group in groups.items():
-            # skip rows with less then 3 cells
+            # skip rows with less than MIN_CELLS cells
             if len(group) < MIN_CELLS:
                 continue
 
@@ -244,9 +268,70 @@ class DocumentWrapper:
             x1 = max(r.x1 for r in group)
             y1 = max(r.y1 for r in group)
 
-            self.table_rows.append((MyRect(x0=x0, y0=y0, x1=x1, y1=y1), int(page_num)))
+            self.table_rows.append(
+                (MyRect(x0=x0, y0=y0, x1=x1, y1=y1), int(page.number))
+            )
 
-        if len(self.table_rows) > 0:
-            return True
-        else:
-            return False
+        return len(self.table_rows) > 0
+
+
+    def apply_table_boundaries(self):
+
+        if not self.table_rows or self.raw_pdf_content_elements.empty:
+            return
+
+        df = self.raw_pdf_content_elements.copy()
+        indices_to_drop: List[int] = []
+
+        for rect, page in self.table_rows:
+
+            # cond_page = df["page"] == page
+            # cond_x0 = df["x0"] >= rect.x0
+            # cond_y0 = df["y0"] >= rect.y0
+            # cond_x1 = df["x1"] >= rect.x1
+            # cond_y1 = df["y1"] >= rect.y1
+
+            # subset = df.assign(
+            #     cond_page=cond_page,
+            #     cond_x0=cond_x0,
+            #     cond_y0=cond_y0,
+            #     cond_x1=cond_x1,
+            #     cond_y1=cond_y1
+            # )
+
+            mask = (
+                    (df["page"] == page)
+                    & (df["x0"] >= rect.x0)
+                    & (df["x1"] <= rect.x1)
+                    & (df["y0"] >= rect.y0)
+                    & (df["y1"] <= rect.y1)
+            )
+
+            subset = df[mask]
+            if subset.empty:
+                continue
+
+            first_index = subset.index[0]
+
+            merged = PyMuDataRowElement(
+                page=page,
+                x0=subset["x0"].min(),
+                y0=subset["y0"].min(),
+                x1=subset["x1"].max(),
+                y1=subset["y1"].max(),
+                text_content=" | ".join(subset["text_content"].tolist()),
+                font=subset.iloc[0]["font"],
+                size=subset.iloc[0]["size"],
+                flag=subset.iloc[0]["flag"],
+            )
+
+            # replace the first row with the merged one
+            df.loc[first_index] = merged.model_dump()
+
+            # mark the remaining rows for removal
+            indices_to_drop.extend(idx for idx in subset.index[1:])
+
+        if indices_to_drop:
+            df.drop(index=indices_to_drop, inplace=True)
+
+        self.raw_pdf_content_elements = df
