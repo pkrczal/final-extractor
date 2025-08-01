@@ -1,6 +1,8 @@
 import document_loader
 from pathlib import Path
 import time
+import random
+import string
 
 from mu_document_utils import DocumentWrapper
 
@@ -40,7 +42,8 @@ def extract():
                 doc.detect_connected_blocks_from_rows()
                 #doc.paint_and_write_boxes()
                 #doc.close_and_save(load_dir / write_out_dir_name / save_dir_name / pdf_path.name)
-                doc.dump_blocks_to_file()
+                doc.dump_blocks_to_file(load_dir / write_out_dir_name / save_dir_name,
+                                        ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10)))
                 print(time.time() - start_time)
                 return
         else:

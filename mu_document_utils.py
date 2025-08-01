@@ -37,8 +37,17 @@ class DocumentWrapper:
     def close_and_save(self, path):
         self.document.save(path)
 
-    def dump_blocks_to_file(self):
-        print('')
+    def dump_blocks_to_file(self, path, name):
+        df_serialize = self.text_blocks.copy()
+        df_serialize = df_serialize.sort_values(
+            by=['page', 'y1'],
+            ascending=[True, True]
+        )
+        path_final = path / f"{name}.json"
+        df_serialize['text_content'].to_json(
+            path_final,
+            index=False
+        )
 
     def paint_and_write_boxes(self):
         for row in self.text_blocks.iterrows():
@@ -319,7 +328,7 @@ class DocumentWrapper:
                 y0=subset["y0"].min(),
                 x1=subset["x1"].max(),
                 y1=subset["y1"].max(),
-                text_content=" | ".join(subset["text_content"].tolist()),
+                text_content=" ".join(subset["text_content"].tolist()),
                 font=subset.iloc[0]["font"],
                 size=subset.iloc[0]["size"],
                 flag=subset.iloc[0]["flag"],
