@@ -34,6 +34,24 @@ class DocumentWrapper:
     def from_document(cls, document: fitz.Document) -> "DocumentWrapper":
         return cls(document=document)
 
+    def close_and_save(self, path):
+        self.document.save(path)
+
+    def paint_and_write_boxes(self):
+        for row in self.text_blocks.iterrows():
+            r = row[1]
+            page = self.document[r['page'] - 1]
+            box = r['box']
+            rect = fitz.Rect(box.x0, box.y0, box.x1, box.y1)
+            shape = page.new_shape()
+            shape.draw_rect(rect)
+            shape.finish(
+                color=(1, 0, 0),
+                width=0.5,
+                fill=None
+            )
+            shape.commit()
+
     def parse_pdf_entries(self):
         rows = []
         for page_num, page in enumerate(self.document, start=1):
@@ -137,10 +155,11 @@ class DocumentWrapper:
         self.text_blocks = self.collapsed_pdf_rows.groupby(['page', 'block_id'], as_index=False).agg({
             'text_content': lambda texts: '\n'.join(texts),
             'x0': 'min',
-            'y0': 'max',
+            'y0': 'min',
             'x1': 'max',
-            'y1': 'min'
+            'y1': 'max'
         })
+
         self.text_blocks['box'] = self.text_blocks.apply(
             lambda _row: MyRect(
                 x0=_row['x0'],
