@@ -43,10 +43,9 @@ class DocumentWrapper:
             by=['page', 'y1'],
             ascending=[True, True]
         )
-        path_final = path / f"{name}.json"
-        df_serialize['text_content'].to_json(
-            path_final,
-            index=False
+        path_final = path / f"{name}.md"
+        df_serialize['text_content'].to_markdown(
+            path_final
         )
 
     def paint_and_write_boxes(self):
@@ -75,7 +74,6 @@ class DocumentWrapper:
         #         fill=None
         #     )
         #     shape.commit()
-
 
     def parse_pdf_entries(self):
         rows = []
@@ -194,7 +192,6 @@ class DocumentWrapper:
             ), axis=1
         )
 
-
     @property
     def has_table(self) -> bool:
         for page_num, page in enumerate(self.document, start=1):
@@ -249,16 +246,16 @@ class DocumentWrapper:
             next_row = self.rects[i + 1]
 
             if (
-                current_row[0].y1  - current_row[0].y1 ==  next_row[0].y1  - next_row[0].y1
-                and next_row[0].x0 > current_row[0].x0
-                and current_row[0].get_height() > 2
-            ) :
+                    current_row[0].y1 - current_row[0].y1 == next_row[0].y1 - next_row[0].y1
+                    and next_row[0].x0 > current_row[0].x0
+                    and current_row[0].get_height() > 2
+            ):
                 row_boxes.append(current_row[0])
                 append_prev = True
             elif (
-                append_prev
-                and current_row[0].y1 -  current_row[0].y1 == next_row[0].y1 - next_row[0].y1
-                and current_row[0].get_height() > 2
+                    append_prev
+                    and current_row[0].y1 - current_row[0].y1 == next_row[0].y1 - next_row[0].y1
+                    and current_row[0].get_height() > 2
             ):
                 row_boxes.append(current_row[0])
 
@@ -283,7 +280,6 @@ class DocumentWrapper:
 
         return len(self.table_rows) > 0
 
-
     def apply_table_boundaries(self):
 
         if not self.table_rows or self.raw_pdf_content_elements.empty:
@@ -292,22 +288,17 @@ class DocumentWrapper:
         df = self.raw_pdf_content_elements.copy()
         indices_to_drop: List[int] = []
 
+        # parse local lines list to dataframe for better processing
+        vertical_lines_df = pd.DataFrame(
+            self.vertical_lines,
+            columns=['page', 'x', 'y0', 'y1']
+        )
+
+        tol = 2  # pixel tolerance for collapsing near-duplicate verticals
+
         for rect, page in self.table_rows:
 
-            # cond_page = df["page"] == page
-            # cond_x0 = df["x0"] >= rect.x0
-            # cond_y0 = df["y0"] >= rect.y0
-            # cond_x1 = df["x1"] >= rect.x1
-            # cond_y1 = df["y1"] >= rect.y1
-
-            # subset = df.assign(
-            #     cond_page=cond_page,
-            #     cond_x0=cond_x0,
-            #     cond_y0=cond_y0,
-            #     cond_x1=cond_x1,
-            #     cond_y1=cond_y1
-            # )
-
+            # 1) pick up all text elements inside this table-row bbox
             mask = (
                     (df["page"] == page)
                     & (df["x0"] >= rect.x0)
@@ -315,20 +306,74 @@ class DocumentWrapper:
                     & (df["y0"] >= rect.y0)
                     & (df["y1"] <= rect.y1)
             )
-
             subset = df[mask]
             if subset.empty:
                 continue
 
-            first_index = subset.index[0]
+            # 2) find all vertical PDF-drawn lines inside the same bbox
+            vertical_bounding = vertical_lines_df[
+                (vertical_lines_df['page'] == page - 1)
+                & (vertical_lines_df['x'] >= rect.x0) & (vertical_lines_df['x'] <= rect.x1)
+                & (vertical_lines_df['y0'] >= rect.y0) & (vertical_lines_df['y1'] <= rect.y1)
+                ].reset_index(drop=True)
 
+            # 3) collapse near-duplicate verticals (remove duplicated lines in found df)
+            collapsed_vertical_boundings = []
+            last_kept = vertical_bounding.loc[0, 'x']
+            keep = [True]
+            for i in range(1, len(vertical_bounding)):
+                current = vertical_bounding.loc[i, 'x']
+                if current - last_kept > 2:
+                    keep.append(True)
+                    last_kept = current
+                else:
+                    keep.append(False)
+
+            # apply the created collapse mask on the original frame
+            collapsed_vertical_boundings = vertical_bounding[keep]
+
+            # 4) build cell-column boundaries by pairing consecutive verticals
+            cells = []
+            for i in range(0, len(collapsed_vertical_boundings)):
+                if i < len(collapsed_vertical_boundings) - 1:
+                    current_row = collapsed_vertical_boundings.iloc[i]
+                    next_row = collapsed_vertical_boundings.iloc[i + 1]
+                    bounding = {
+                        'page': page,
+                        'x0': current_row['x'],
+                        'x1': next_row['x']
+                    }
+                    cells.append(bounding)
+
+            cells_df = pd.DataFrame(cells)
+
+            # 5) for each cell, pull subset bits and join, then glue with "|"
+            collapsed_cells_text = []
+            for _, cell in cells_df.iterrows():
+                x0 = cell['x0']
+                x1 = cell['x1']
+
+                cell_items = subset[
+                    (subset['x0'] >= x0) &
+                    (subset['x1'] <= x1)
+                    ]
+
+                collapsed_cells_text.append(
+                    ' '.join(cell_items['text_content'].tolist())
+                )
+
+            merged_text = '|'.join(collapsed_cells_text)
+
+
+            # 6) build the merged row as before, but swap in our delimited text
+            first_index = subset.index[0]
             merged = PyMuDataRowElement(
                 page=page,
                 x0=subset["x0"].min(),
                 y0=subset["y0"].min(),
                 x1=subset["x1"].max(),
                 y1=subset["y1"].max(),
-                text_content=" ".join(subset["text_content"].tolist()),
+                text_content=merged_text,
                 font=subset.iloc[0]["font"],
                 size=subset.iloc[0]["size"],
                 flag=subset.iloc[0]["flag"],
@@ -338,9 +383,41 @@ class DocumentWrapper:
             df.loc[first_index] = merged.model_dump()
 
             # mark the remaining rows for removal
-            indices_to_drop.extend(idx for idx in subset.index[1:])
+            indices_to_drop.extend(idx for idx in subset.index if idx != first_index)
 
         if indices_to_drop:
             df.drop(index=indices_to_drop, inplace=True)
 
         self.raw_pdf_content_elements = df
+
+    def create_ascii_table(self, source_df, base_df) -> str:
+
+        row_cells = []
+
+        for _, cell in source_df.iterrows():
+            x0 = cell['x0']
+            x1 = cell['x1']
+
+            cell_items = base_df[
+                (base_df['x0'] >= x0) &
+                (base_df['x1'] <= x1)
+                ]
+
+            cell_text = ' '.join(cell_items['text_content'].tolist())
+            row_cells.append(cell_text)
+
+        #compute row cells
+        widths = [max(len(text), 1) for text in row_cells]
+        # build borders
+        horizontal_segments = ['─' * (w + 2) for w in widths]
+        top_border = '┌' + '┬'.join(horizontal_segments) + '┐'
+        bottom_border = '└' + '┴'.join(horizontal_segments) + '┘'
+
+        #build content line
+        padded_cells = [f" {text.ljust(widths[i])} " for i, text in enumerate(row_cells)]
+        content_line = '│' + '│'.join(padded_cells) + '│'
+
+        # assemble
+        ascii_table = '\n'.join([top_border, content_line, bottom_border])
+
+        return f"<pre>\n{ascii_table}\n</pre>"

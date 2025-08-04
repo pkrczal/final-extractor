@@ -30,21 +30,23 @@ def extract():
                 doc = DocumentWrapper.from_document(document)
                 start_time = time.time()
                 has_table = doc.has_table
-                print(has_table)
+                #print(has_table)
                 # get entries from pdf
                 doc.parse_pdf_entries()
                 # sanitize raw content
                 # Todo: check if add
                 #  additional algorithms need to be run before sanitation
                 doc.sanitize_parsed_pdf_entries()
-                doc.apply_table_boundaries()
+                if has_table:
+                    doc.apply_table_boundaries()
                 doc.collapse_parsed_entries_into_rows()
                 doc.detect_connected_blocks_from_rows()
+                doc.dump_blocks_to_file(load_dir / write_out_dir_name / save_dir_name, pdf_path.name.split(".")[0])
+                print(time.time() - start_time)
+                # optional for debugging detected stuff
                 #doc.paint_and_write_boxes()
                 #doc.close_and_save(load_dir / write_out_dir_name / save_dir_name / pdf_path.name)
-                doc.dump_blocks_to_file(load_dir / write_out_dir_name / save_dir_name,
-                                        ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10)))
-                print(time.time() - start_time)
+                #continue
                 return
         else:
             i+=1
