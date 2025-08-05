@@ -43,9 +43,11 @@ class DocumentWrapper:
             by=['page', 'y1'],
             ascending=[True, True]
         )
-        path_final = path / f"{name}.md"
-        df_serialize['text_content'].to_markdown(
-            path_final
+        path_final = path / f"{name}.txt"
+        df_serialize['text_content'].to_csv(
+            path_final,
+            sep='\t',
+            index=False
         )
 
     def paint_and_write_boxes(self):
@@ -348,21 +350,21 @@ class DocumentWrapper:
             cells_df = pd.DataFrame(cells)
 
             # 5) for each cell, pull subset bits and join, then glue with "|"
-            collapsed_cells_text = []
-            for _, cell in cells_df.iterrows():
-                x0 = cell['x0']
-                x1 = cell['x1']
+            # collapsed_cells_text = []
+            # for _, cell in cells_df.iterrows():
+            #     x0 = cell['x0']
+            #     x1 = cell['x1']
+            #
+            #     cell_items = subset[
+            #         (subset['x0'] >= x0) &
+            #         (subset['x1'] <= x1)
+            #         ]
+            #
+            #     collapsed_cells_text.append(
+            #         ' '.join(cell_items['text_content'].tolist())
+            #     )
 
-                cell_items = subset[
-                    (subset['x0'] >= x0) &
-                    (subset['x1'] <= x1)
-                    ]
-
-                collapsed_cells_text.append(
-                    ' '.join(cell_items['text_content'].tolist())
-                )
-
-            merged_text = '|'.join(collapsed_cells_text)
+            merged_text = self.create_ascii_table(cells_df, subset)
 
 
             # 6) build the merged row as before, but swap in our delimited text
@@ -420,4 +422,6 @@ class DocumentWrapper:
         # assemble
         ascii_table = '\n'.join([top_border, content_line, bottom_border])
 
-        return f"<pre>\n{ascii_table}\n</pre>"
+        return f"{ascii_table}"
+        # kepp for optional element adding
+        #return f"<pre>\n{ascii_table}\n</pre>"

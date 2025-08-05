@@ -16,7 +16,7 @@ def extract():
     pdfs_from_path = list(load_dir.glob("**/with_pid_case/*.pdf"))
     i = 0
     for pdf_path in pdfs_from_path:
-        if i == 22:
+        if True:
             # safe the output in the same basedir as we loaded from
             target_path_output = pdf_path.parent / save_dir_name
             target_path_output.mkdir(exist_ok=True)
@@ -47,7 +47,7 @@ def extract():
                 #doc.paint_and_write_boxes()
                 #doc.close_and_save(load_dir / write_out_dir_name / save_dir_name / pdf_path.name)
                 #continue
-                return
+                #return
         else:
             i+=1
             continue
