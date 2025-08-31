@@ -1,3 +1,4 @@
+import ast
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
@@ -37,6 +38,8 @@ class DocumentWrapper:
     def close_and_save(self, path):
         self.document.save(path)
 
+
+
     def dump_blocks_to_file(self, path, name):
         df_serialize = self.text_blocks.copy()
         df_serialize = df_serialize.sort_values(
@@ -44,11 +47,22 @@ class DocumentWrapper:
             ascending=[True, True]
         )
         path_final = path / f"{name}.txt"
-        df_serialize['text_content'].to_csv(
-            path_final,
-            sep='\t',
-            index=False
-        )
+         # df_serialize['text_content'].to_json(
+         #     path_final,
+         #      index=False,
+         #    force_ascii=False
+         # )
+        # df_serialize['text_content'].to_markdown(
+        #     path_final,
+        #     index=False
+        # )
+        (df_serialize['text_content']
+        .to_csv(
+             path_final,
+             sep='\t',
+             index=False,
+             header=False
+        ))
 
     def paint_and_write_boxes(self):
         for row in self.text_blocks.iterrows():
@@ -65,17 +79,17 @@ class DocumentWrapper:
             )
             shape.commit()
         # DEBUG fraw lines
-        # for rect, page in self.table_rows:
-        #     rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y1)
-        #     p = self.document[page - 1]
-        #     shape = p.new_shape()
-        #     shape.draw_rect(rect)
-        #     shape.finish(
-        #         color=(0, 1, 0),
-        #         width=1,
-        #         fill=None
-        #     )
-        #     shape.commit()
+        for rect, page in self.table_rows:
+            rect = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y1)
+            p = self.document[page - 1]
+            shape = p.new_shape()
+            shape.draw_rect(rect)
+            shape.finish(
+                color=(0, 1, 0),
+                width=1,
+                fill=None
+            )
+            shape.commit()
 
     def parse_pdf_entries(self):
         rows = []
